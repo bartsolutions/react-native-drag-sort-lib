@@ -6,10 +6,6 @@ const {width} = Dimensions.get('window')
 
 const defaultZIndex = 8
 const touchZIndex = 99
-const maxScale = 1.1
-const minOpacity = 0.8
-const scaleDuration = 100
-const slideDuration = 300
 
 export default class DragSortableView extends Component{
 
@@ -18,13 +14,36 @@ export default class DragSortableView extends Component{
 
         this.sortRefs = new Map()
 
-        this.itemWidth = props.childrenWidth+props.marginChildrenLeft+props.marginChildrenRight
-        this.itemHeight = props.childrenHeight+props.marginChildrenTop+props.marginChildrenBottom
+        const itemWidth = props.childrenWidth+props.marginChildrenLeft+props.marginChildrenRight
+        const itemHeight = props.childrenHeight+props.marginChildrenTop+props.marginChildrenBottom
 
-        this.reComplexDataSource(true,props)
-    }
+        // this.reComplexDataSource(true,props) // react < 16.3
+        // react > 16.3 Fiber
+        const rowNum = parseInt(props.parentWidth/itemWidth);
+        const dataSource = props.dataSource.map((item,index)=>{
+            const newData = {}
+            const left = (index%rowNum)*itemWidth
+            const top = parseInt((index/rowNum))*itemHeight
 
-    componentWillMount() {
+            newData.data = item
+            newData.originIndex = index
+            newData.originLeft = left
+            newData.originTop = top
+            newData.position = new Animated.ValueXY({
+                x: parseInt(left+0.5),
+                y: parseInt(top+0.5),
+            })
+            newData.scaleValue = new Animated.Value(1)
+            return newData
+        });
+        this.state = {
+            dataSource: dataSource,
+            curPropsDataSource: props.dataSource,
+            height: Math.ceil(dataSource.length / rowNum) * itemHeight,
+            itemWidth,
+            itemHeight,
+        };
+
         this._panResponder = PanResponder.create({
             onStartShouldSetPanResponder: (evt, gestureState) => true,
             onStartShouldSetPanResponderCapture: (evt, gestureState) => {
@@ -43,10 +62,45 @@ export default class DragSortableView extends Component{
         })
     }
 
-    componentWillReceiveProps(nextProps) {
-        if (this.props.dataSource != nextProps.dataSource) {
-            this.reComplexDataSource(false,nextProps)
+    // react < 16.3
+    // componentWillReceiveProps(nextProps) {
+    //     if (this.props.dataSource != nextProps.dataSource) {
+    //         this.reComplexDataSource(false,nextProps)
+    //     }
+    // }
+
+    // react > 16.3 Fiber
+    static getDerivedStateFromProps(nextprops, prevState) {
+        const itemWidth = nextprops.childrenWidth + nextprops.marginChildrenLeft + nextprops.marginChildrenRight
+        const itemHeight = nextprops.childrenHeight + nextprops.marginChildrenTop + nextprops.marginChildrenBottom
+        if (nextprops.dataSource != prevState.curPropsDataSource || itemWidth !== prevState.itemWidth || itemHeight !== prevState.itemHeight) {
+            
+            const rowNum = parseInt(nextprops.parentWidth / itemWidth);
+            const dataSource = nextprops.dataSource.map((item, index) => {
+                const newData = {};
+                const left = index % rowNum * itemWidth;
+                const top = parseInt(index / rowNum) * itemHeight;
+
+                newData.data = item;
+                newData.originIndex = index;
+                newData.originLeft = left;
+                newData.originTop = top;
+                newData.position = new Animated.ValueXY({
+                    x: parseInt(left + 0.5),
+                    y: parseInt(top + 0.5),
+                });
+                newData.scaleValue = new Animated.Value(1);
+                return newData;
+            });
+            return {
+                dataSource: dataSource,
+                curPropsDataSource: nextprops.dataSource,
+                height: Math.ceil(dataSource.length / rowNum) * itemHeight,
+                itemWidth,
+                itemHeight,
+            }
         }
+        return null;
     }
 
     startTouch(touchIndex) {
@@ -68,8 +122,8 @@ export default class DragSortableView extends Component{
             Animated.timing(
                 this.state.dataSource[touchIndex].scaleValue,
                 {
-                    toValue: maxScale,
-                    duration: scaleDuration,
+                    toValue: this.props.maxScale,
+                    duration: this.props.scaleDuration,
                 }
             ).start(()=>{
                 this.touchCurItem = {
@@ -96,23 +150,27 @@ export default class DragSortableView extends Component{
 
             let dx = gestureState.dx
             let dy = gestureState.dy
+            const itemWidth = this.state.itemWidth;
+            const itemHeight = this.state.itemHeight;
 
-            const rowNum = parseInt(this.props.parentWidth/this.itemWidth);
-            const maxWidth = this.props.parentWidth-this.itemWidth
-            const maxHeight = this.itemHeight*Math.ceil(this.state.dataSource.length/rowNum) - this.itemHeight
+            const rowNum = parseInt(this.props.parentWidth/itemWidth);
+            const maxWidth = this.props.parentWidth-itemWidth
+            const maxHeight = itemHeight*Math.ceil(this.state.dataSource.length/rowNum) - itemHeight
 
-            //出界后取最大或最小值
-            if (this.touchCurItem.originLeft + dx < 0) {
-                dx = -this.touchCurItem.originLeft
-            } else if (this.touchCurItem.originLeft + dx > maxWidth) {
-                dx = maxWidth - this.touchCurItem.originLeft
+            // Is it free to drag
+            if (!this.props.isDragFreely) {
+                // Maximum or minimum after out of bounds
+                if (this.touchCurItem.originLeft + dx < 0) {
+                    dx = -this.touchCurItem.originLeft
+                } else if (this.touchCurItem.originLeft + dx > maxWidth) {
+                    dx = maxWidth - this.touchCurItem.originLeft
+                }
+                if (this.touchCurItem.originTop + dy < 0) {
+                    dy = -this.touchCurItem.originTop
+                } else if (this.touchCurItem.originTop + dy > maxHeight) {
+                    dy = maxHeight - this.touchCurItem.originTop
+                }
             }
-            if (this.touchCurItem.originTop + dy < 0) {
-                dy = -this.touchCurItem.originTop
-            } else if (this.touchCurItem.originTop + dy > maxHeight) {
-                dy = maxHeight - this.touchCurItem.originTop
-            }
-
 
             let left = this.touchCurItem.originLeft + dx
             let top = this.touchCurItem.originTop + dy
@@ -128,10 +186,9 @@ export default class DragSortableView extends Component{
                 y: top,
             })
 
-
             let moveToIndex = 0
-            let moveXNum = dx/this.itemWidth
-            let moveYNum = dy/this.itemHeight
+            let moveXNum = dx/itemWidth
+            let moveYNum = dy/itemHeight
             if (moveXNum > 0) {
                 moveXNum = parseInt(moveXNum+0.5)
             } else if (moveXNum < 0) {
@@ -145,7 +202,15 @@ export default class DragSortableView extends Component{
 
             moveToIndex = this.touchCurItem.index+moveXNum+moveYNum*rowNum
 
-            if (moveToIndex > this.state.dataSource.length-1) moveToIndex = this.state.dataSource.length-1
+            if (moveToIndex > this.state.dataSource.length-1) {
+                moveToIndex = this.state.dataSource.length-1
+            } else if (moveToIndex < 0) {
+                moveToIndex = 0;
+            }
+
+            if (this.props.onDragging) {
+                this.props.onDragging(gestureState, left, top, moveToIndex)
+            }
 
             if (this.touchCurItem.moveToIndex != moveToIndex ) {
                 const fixedItems = this.props.fixedItems;
@@ -175,7 +240,7 @@ export default class DragSortableView extends Component{
                             item.position,
                             {
                                 toValue: {x: parseInt(nextItem.originLeft+0.5),y: parseInt(nextItem.originTop+0.5)},
-                                duration: slideDuration,
+                                duration: this.props.slideDuration,
                                 easing: Easing.out(Easing.quad),
                             }
                         ).start()
@@ -199,16 +264,18 @@ export default class DragSortableView extends Component{
                 this.state.dataSource[this.touchCurItem.index].scaleValue,
                 {
                     toValue: 1,
-                    duration: scaleDuration,
+                    duration: this.props.scaleDuration,
                 }
-            ).start()
-            this.touchCurItem.ref.setNativeProps({
-                style: {
-                    zIndex: defaultZIndex,
-                }
+            ).start(()=>{
+                this.touchCurItem.ref.setNativeProps({
+                    style: {
+                        zIndex: defaultZIndex,
+                    }
+                })
+                this.changePosition(this.touchCurItem.index,this.touchCurItem.moveToIndex)
+                this.touchCurItem = null
             })
-            this.changePosition(this.touchCurItem.index,this.touchCurItem.moveToIndex)
-            this.touchCurItem = null
+            
         }
     }
 
@@ -224,10 +291,12 @@ export default class DragSortableView extends Component{
 
         if (startIndex == endIndex) {
             const curItem = this.state.dataSource[startIndex]
-            this.state.dataSource[startIndex].position.setValue({
-                x: parseInt(curItem.originLeft+0.5),
-                y: parseInt(curItem.originTop+0.5),
-            })
+            if (curItem != null) {
+                curItem.position.setValue({
+                    x: parseInt(curItem.originLeft + 0.5),
+                    y: parseInt(curItem.originTop + 0.5),
+                })
+            }
             return;
         }
 
@@ -275,7 +344,7 @@ export default class DragSortableView extends Component{
             if (this.props.onDataChange) {
                 this.props.onDataChange(this.getOriginalData())
             }
-            //防止RN不绘制开头和结尾
+            // Prevent RN from drawing the beginning and end
             const startItem = this.state.dataSource[startIndex]
             this.state.dataSource[startIndex].position.setValue({
                 x: parseInt(startItem.originLeft+0.5),
@@ -291,11 +360,13 @@ export default class DragSortableView extends Component{
     }
 
     reComplexDataSource(isInit,props) {
-        const rowNum = parseInt(props.parentWidth/this.itemWidth);
+        const itemWidth = this.state.itemWidth;
+        const itemHeight = this.state.itemHeight;
+        const rowNum = parseInt(props.parentWidth/itemWidth);
         const dataSource = props.dataSource.map((item,index)=>{
             const newData = {}
-            const left = (index%rowNum)*this.itemWidth
-            const top = parseInt((index/rowNum))*this.itemHeight
+            const left = (index%rowNum)*itemWidth
+            const top = parseInt((index/rowNum))*itemHeight
 
             newData.data = item
             newData.originIndex = index
@@ -312,12 +383,12 @@ export default class DragSortableView extends Component{
         if (isInit) {
             this.state = {
                 dataSource: dataSource,
-                height: Math.ceil(dataSource.length/rowNum)*this.itemHeight
+                height: Math.ceil(dataSource.length/rowNum)*itemHeight
             }
         } else {
             this.setState({
                 dataSource: dataSource,
-                height: Math.ceil(dataSource.length/rowNum)*this.itemHeight
+                height: Math.ceil(dataSource.length/rowNum)*itemHeight
             })
         }
 
@@ -360,8 +431,8 @@ export default class DragSortableView extends Component{
                         left: item.position.x,
                         top: item.position.y,
                         opacity: item.scaleValue.interpolate({
-                            inputRange:[1,maxScale],
-                            outputRange:[1,minOpacity]
+                            inputRange:[1,this.props.maxScale],
+                            outputRange:[1,this.props.minOpacity]
                         }),
                         transform: [transformObj]
                     }]}>
@@ -410,6 +481,12 @@ DragSortableView.propTypes = {
     fixedItems: PropTypes.array,
     keyExtractor: PropTypes.func,
     delayLongPress: PropTypes.number,
+    isDragFreely: PropTypes.bool,
+    onDragging: PropTypes.func,
+    maxScale: PropTypes.number,
+    minOpacity: PropTypes.number,
+    scaleDuration: PropTypes.number,
+    slideDuration: PropTypes.number
 }
 
 DragSortableView.defaultProps = {
@@ -420,7 +497,12 @@ DragSortableView.defaultProps = {
     parentWidth: width,
     sortable: true,
     scaleStatus: 'scale',
-    fixedItems: []
+    fixedItems: [],
+    isDragFreely: false,
+    maxScale: 1.1,
+    minOpacity: 0.8,
+    scaleDuration: 100,
+    slideDuration: 300,
 }
 
 const styles = StyleSheet.create({
