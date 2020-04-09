@@ -565,6 +565,10 @@ export default class AutoDragSortableView extends Component{
         }
     }
 
+    scrollEnd = () => {
+      this.scrollRef.scrollToEnd({animated: true})
+    }
+
     render() {
         return (
             <ScrollView
