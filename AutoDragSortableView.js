@@ -700,6 +700,7 @@ AutoDragSortableView.defaultProps = {
 const styles = StyleSheet.create({
     container: {
         flex: 1,
+        backgroundColor: '#f6f5f5'
     },
     swipe: {
         flexWrap: 'wrap',
