@@ -105,10 +105,10 @@ export default class AutoDragSortableView extends Component{
 
     componentDidMount() {
         this.initTag()
-        InteractionManager.runAfterInteractions(() => {
-            this.scrollTo(1, false)
-            this.scrollTo(0, false)
-        })
+        setTimeout(() => {
+          this.scrollTo(1, false)
+          this.scrollTo(0, false)
+        }, 1000);
     }
 
     // Initialization tag
