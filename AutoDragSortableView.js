@@ -572,6 +572,8 @@ export default class AutoDragSortableView extends Component{
     render() {
         return (
             <ScrollView
+                showsHorizontalScrollIndicator={false}
+                showsVerticalScrollIndicator={false}
                 bounces={false}
                 scrollEventThrottle={1}
                 ref={(scrollRef)=> this.scrollRef = scrollRef}
